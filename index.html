@@ -1,1 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Konami League Manager ⚽</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+*{box-sizing:border-box;}
+body{font-family:"Segoe UI",Arial,sans-serif;background:#f2f4f8;color:#222;margin:0;padding:10px;}
+h3{text-align:center;color:#111;margin-bottom:10px;}
+section{background:#fff;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.1);}
+input,select,button{padding:8px;font-size:14px;border:1px solid #ccc;border-radius:6px;}
+button{background:#007bff;color:white;font-weight:bold;border:none;margin-top:5px;cursor:pointer;}
+button:hover{background:#0056b3;}
+button:disabled{
+    background:#777 !important;
+    cursor:not-allowed !important;
+}
+table{width:100%;border-collapse:collapse;margin-top:10px;}
+th,td{border:1px solid #ddd;padding:6px;text-align:center;font-size:14px;}
+th{background:#007bff;color:white;}
+.reset-btn{background:#dc3545;margin-top:10px;}
+.reset-btn:hover{background:#a81e2e;}
+.print-btn{background:#28a745;margin-top:10px;}
+.print-btn:hover{background:#1f7f33;}
+input.score{width:50px;}
+
+@media (max-width:600px){
+  h3{font-size:18px;}
+  table, th, td{font-size:12px;}
+  input.score{width:40px;}
+}
+</style>
+</head>
+
+<body>
+
+<h3>⚽ Konami League Manager</h3>
+created by Adow Osman
+
+<section>
+  <h3>Add Team</h3>
+  <input type="text" id="teamName" placeholder="Enter team name">
+  <button onclick="addTeam()">Add Team</button>
+</section>
+
+<section>
+  <h3>Matches</h3>
+  <div style="overflow-x:auto;">
+    <table id="matchTable">
+      <thead>
+        <tr>
+          <th>No.</th>
+          <th>Home Team</th>
+          <th>Home Score</th>
+          <th>Away Team</th>
+          <th>Away Score</th>
+          <th>Submit</th>
+        </tr>
+      </thead>
+      <tbody id="matchBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h3>League Table</h3>
+  <div style="overflow-x:auto;">
+    <table id="leagueTable">
+      <thead>
+        <tr>
+          <th>No.</th><th>Team</th><th>P</th><th>W</th><th>D</th><th>L</th>
+          <th>GF</th><th>GA</th><th>GD</th><th>Pts</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h3>Match History</h3>
+  <div style="overflow-x:auto;">
+    <table id="historyTable">
+      <thead>
+        <tr>
+          <th>No.</th><th>Match</th><th>Score</th><th>Points</th><th>Date</th>
+        </tr>
+      </thead>
+      <tbody id="matchHistory"></tbody>
+    </table>
+  </div>
+  <button class="print-btn" onclick="downloadPDF()">📄 Download PDF</button>
+  <button class="reset-btn" onclick="resetLeague()">Reset League</button>
+</section>
+
+<script>
+let teams = JSON.parse(localStorage.getItem('konamiTeams')) || {};
+let matches = JSON.parse(localStorage.getItem('konamiMatches')) || [];
+let leagueFinished = false;
+
+function saveData(){
+  localStorage.setItem('konamiTeams', JSON.stringify(teams));
+  localStorage.setItem('konamiMatches', JSON.stringify(matches));
+}
+
+// Temporary score save
+function updateTempScore(index, type, value){
+  matches[index][type] = value === "" ? "" : parseInt(value);
+  saveData();
+}
+
+// Add team
+function addTeam(){
+  const name = document.getElementById('teamName').value.trim();
+  if(!name) return alert("Enter a team name");
+  if(teams[name]) return alert("Team already exists!");
+
+  teams[name] = {name, played:0, w:0, d:0, l:0, gf:0, ga:0, gd:0, points:0};
+  document.getElementById('teamName').value = '';
+
+  const teamNames = Object.keys(teams);
+  for(let i=0;i<teamNames.length;i++){
+    if(teamNames[i] === name) continue;
+
+    matches.push({home:name, away:teamNames[i], homeScore:'', awayScore:'', homePoints:0, awayPoints:0, date:''});
+    matches.push({home:teamNames[i], away:name, homeScore:'', awayScore:'', homePoints:0, awayPoints:0, date:''});
+  }
+
+  saveData();
+  renderMatches();
+  renderTable();
+}
+
+// Render matches
+function renderMatches(){
+  const body = document.getElementById('matchBody');
+  body.innerHTML='';
+
+  matches.forEach((m,i)=>{
+    body.innerHTML += `
+    <tr>
+      <td>${i+1}</td>
+      <td>${m.home}</td>
+      <td>
+        <input type="number" class="score" min="0"
+          id="homeScore${i}"
+          value="${m.homeScore}"
+          ${m.date!==''?'disabled':''}
+          oninput="updateTempScore(${i}, 'homeScore', this.value)">
+      </td>
+      <td>${m.away}</td>
+      <td>
+        <input type="number" class="score" min="0"
+          id="awayScore${i}"
+          value="${m.awayScore}"
+          ${m.date!==''?'disabled':''}
+          oninput="updateTempScore(${i}, 'awayScore', this.value)">
+      </td>
+      <td>
+        <button onclick="submitMatch(${i})" ${m.date!==''?'disabled':''}>
+          Submit
+        </button>
+      </td>
+    </tr>`;
+  });
+}
+
+// Submit match
+function submitMatch(index){
+  const m = matches[index];
+  const homeScore = parseInt(m.homeScore);
+  const awayScore = parseInt(m.awayScore);
+
+  if(isNaN(homeScore)||isNaN(awayScore)) return alert("Fill both scores!");
+
+  const h = teams[m.home];
+  const a = teams[m.away];
+
+  // Update stats
+  h.played++; a.played++;
+  h.gf += homeScore; h.ga += awayScore;
+  a.gf += awayScore; a.ga += homeScore;
+  h.gd = h.gf - h.ga;
+  a.gd = a.gf - a.ga;
+
+  let homePoints = 0, awayPoints = 0;
+
+  if(homeScore > awayScore){
+    h.w++; a.l++; h.points += 3; homePoints = 3;
+  } else if(awayScore > homeScore){
+    a.w++; h.l++; a.points += 3; awayPoints = 3;
+  } else {
+    h.d++; a.d++; h.points++; a.points++;
+    homePoints = 1; awayPoints = 1;
+  }
+
+  m.homePoints = homePoints;
+  m.awayPoints = awayPoints;
+  m.date = new Date().toLocaleString();
+
+  // 🔥 Disable button + change color + disable inputs
+  setTimeout(() => {
+    const btn = document.querySelector(`button[onclick="submitMatch(${index})"]`);
+    if (btn) {
+        btn.disabled = true;
+        btn.style.background = "#777";
+        btn.style.cursor = "not-allowed";
+    }
+    document.getElementById(`homeScore${index}`).disabled = true;
+    document.getElementById(`awayScore${index}`).disabled = true;
+  }, 50);
+
+  saveData();
+  renderMatches();
+  renderTable();
+  renderHistory();
+  checkLeagueEnd();
+}
+
+// Render table
+function renderTable(){
+  const body=document.getElementById('tableBody');
+  const sorted=Object.values(teams).sort((a,b)=>{
+    if(b.points!==a.points) return b.points-a.points;
+    if(b.gd!==a.gd) return b.gd-a.gd;
+    return b.gf-a.gf;
+  });
+
+  body.innerHTML='';
+  sorted.forEach((t,i)=>{
+    body.innerHTML+=`
+    <tr>
+      <td>${i+1}</td>
+      <td>${t.name}</td>
+      <td>${t.played}</td>
+      <td>${t.w}</td>
+      <td>${t.d}</td>
+      <td>${t.l}</td>
+      <td>${t.gf}</td>
+      <td>${t.ga}</td>
+      <td>${t.gd}</td>
+      <td>${t.points}</td>
+    </tr>`;
+  });
+}
+
+// History
+function renderHistory(){
+  const body=document.getElementById('matchHistory');
+  body.innerHTML='';
+
+  matches.filter(m=>m.date!=='').forEach((m,i)=>{
+    body.innerHTML+=`
+    <tr>
+      <td>${i+1}</td>
+      <td>${m.home} vs ${m.away}</td>
+      <td>${m.homeScore} - ${m.awayScore}</td>
+      <td>${m.homePoints}pt - ${m.awayPoints}pt</td>
+      <td>${m.date}</td>
+    </tr>`;
+  });
+}
+
+// If season is over
+function checkLeagueEnd(){
+  const totalTeams = Object.keys(teams).length;
+  if(totalTeams < 2) return;
+
+  const expected = totalTeams * (totalTeams - 1);
+  const played = matches.filter(m=>m.date!=='').length;
+
+  if(played < expected) return;
+
+  leagueFinished = true;
+
+  const maxPoints = Math.max(...Object.values(teams).map(t=>t.points));
+  const winners = Object.values(teams).filter(t=>t.points===maxPoints);
+
+  if(winners.length>1) alert("⚖️ Tie: " + winners.map(w=>w.name).join(", "));
+  else alert("🏆 Winner: " + winners[0].name);
+}
+
+// Reset all
+function resetLeague(){
+  if(confirm("Reset all data?")){
+    teams={};
+    matches=[];
+    saveData();
+    renderTable();
+    renderMatches();
+    renderHistory();
+  }
+}
+
+// Export PDF
+function downloadPDF(){
+  const temp=document.createElement("div");
+  temp.style.width="800px";
+  temp.style.background="white";
+  temp.style.padding="20px";
+
+  if(leagueFinished){
+    const maxPoints=Math.max(...Object.values(teams).map(t=>t.points));
+    const winners=Object.values(teams).filter(t=>t.points===maxPoints);
+
+    const p=document.createElement("p");
+    p.style.textAlign="center";
+    p.style.fontWeight="bold";
+    p.style.fontSize="20px";
+    p.style.marginBottom="20px";
+
+    p.textContent = winners.length > 1 ?
+      `⚖️ Tie: ${winners.map(w=>w.name).join(", ")}` :
+      `🏆 Winner: ${winners[0].name}`;
+
+    temp.appendChild(p);
+  }
+
+  const h1=document.createElement("h3");
+  h1.textContent="League Table";
+  h1.style.textAlign="center";
+  temp.appendChild(h1);
+
+  temp.appendChild(document.getElementById("leagueTable").cloneNode(true));
+
+  const space=document.createElement("div");
+  space.style.height="40px";
+  temp.appendChild(space);
+
+  const h2=document.createElement("h3");
+  h2.textContent="Match History";
+  h2.style.textAlign="center";
+  temp.appendChild(h2);
+
+  temp.appendChild(document.getElementById("historyTable").cloneNode(true));
+
+  document.body.appendChild(temp);
+
+  html2canvas(temp,{scale:2}).then(c=>{
+    const img=c.toDataURL("image/png");
+    const pdf=new jspdf.jsPDF("p","pt","a4");
+    const width=pdf.internal.pageSize.getWidth();
+    const height=(c.height*width)/c.width;
+    pdf.addImage(img,"PNG",0,20,width,height);
+    pdf.save("Konami_League.pdf");
+    document.body.removeChild(temp);
+  });
+}
+
+// Load
+renderMatches();
+renderTable();
+renderHistory();
+</script>
+
+</body>
+</html>
 
